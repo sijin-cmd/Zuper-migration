@@ -228,18 +228,56 @@ async function loadJobsView(container) {
       </div>
     </div>`).join('');
     return `<div class="cat-block" id="jcat-${cat.id}">
-      <div class="cat-header" onclick="toggleCatBody('jbody-${cat.id}')">
+      <div class="cat-header" onclick="toggleJobCatBody('${cat.id}')">
         <div class="big-cb" id="jcb-${cat.id}" onclick="event.stopPropagation();toggleJobCat('${cat.id}')"></div>
         <span class="cat-name">${esc(cat.name)}</span>
         <span class="cat-sel-count" id="jcsc-${cat.id}"></span>
         <span class="cat-meta-txt">${statuses.length} status${statuses.length!==1?'es':''}</span>
-        <span class="chev open">&#9660;</span>
+        <span class="chev" id="jchev-${cat.id}">&#9660;</span>
       </div>
-      <div class="cat-body" id="jbody-${cat.id}">
-        ${statuses.length?'<div class="sub-lbl">Statuses</div>'+statusRows:'<div class="empty-state" style="padding:1rem">No statuses found.</div>'}
+      <div class="cat-body" id="jbody-${cat.id}" style="display:none">
+        ${statuses.length?'<div class="sub-lbl">Statuses</div><div style="display:flex;gap:8px;margin-bottom:6px;"><button class="lnk" onclick="event.stopPropagation();jobSelectAllStatuses(\''+cat.id+'\')">Select all</button><button class="lnk" onclick="event.stopPropagation();jobClearAllStatuses(\''+cat.id+'\')">Clear all</button></div>'+statusRows:'<div class="empty-state" style="padding:1rem">No statuses found.</div>'}
       </div>
     </div>`;
   }).join('');
+}
+
+function toggleJobCatBody(catId) {
+  const body=document.getElementById('jbody-'+catId); if(!body) return;
+  const opening=body.style.display==='none';
+  body.style.display=opening?'block':'none';
+  const chev=document.getElementById('jchev-'+catId);
+  if(chev) chev.classList.toggle('open',opening);
+}
+
+function jobSelectAllStatuses(catId) {
+  const sel=state.selections.jobs;
+  document.querySelectorAll('#jbody-'+catId+' .s-item').forEach(el=>{
+    if(!el.classList.contains('on')){
+      el.classList.add('on');
+      const cb=el.querySelector('.sm-cb'); if(cb) cb.classList.add('on');
+      const statusId=el.id.replace('jsi-','');
+      if(!sel.statuses.includes(statusId)) sel.statuses.push(statusId);
+    }
+  });
+  if(!sel.categories.includes(catId)){
+    sel.categories.push(catId);
+    const cb=document.getElementById('jcb-'+catId); if(cb) cb.className='big-cb partial';
+    const block=document.getElementById('jcat-'+catId); if(block) block.classList.add('has-sel');
+  }
+  updateTabCount('jobs');
+}
+
+function jobClearAllStatuses(catId) {
+  const sel=state.selections.jobs;
+  const ids=new Set();
+  document.querySelectorAll('#jbody-'+catId+' .s-item').forEach(el=>{
+    el.classList.remove('on');
+    const cb=el.querySelector('.sm-cb'); if(cb) cb.classList.remove('on');
+    ids.add(el.id.replace('jsi-',''));
+  });
+  sel.statuses=sel.statuses.filter(id=>!ids.has(id));
+  updateTabCount('jobs');
 }
 
 const CL_TYPE_MAP={
