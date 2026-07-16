@@ -1,0 +1,8 @@
+{
+  "name": "zuper-migratex-netlify",
+  "version": "2.0.0",
+  "description": "Zuper MigrateX — Netlify deployment",
+  "engines": {
+    "node": ">=18"
+  }
+}

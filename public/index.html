@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Zuper MigrateX</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+
+  <div class="top-bar">
+    <div class="logo-mark"><svg viewBox="0 0 20 20"><path d="M10 2L18 7V13L10 18L2 13V7L10 2Z"/></svg></div>
+    <div class="brand-name">Zuper <span>MigrateX</span></div>
+    <div class="top-bar-right">v2.0</div>
+  </div>
+
+  <div class="stepper">
+    <div class="step-wrap"><div class="step-node"><div class="step-num active" id="sn1">1</div><div class="step-label active" id="sl1">Connect</div></div></div>
+    <div class="step-line" id="sc1"></div>
+    <div class="step-wrap"><div class="step-node"><div class="step-num pending" id="sn2">2</div><div class="step-label" id="sl2">Modules</div></div></div>
+    <div class="step-line" id="sc2"></div>
+    <div class="step-wrap"><div class="step-node"><div class="step-num pending" id="sn3">3</div><div class="step-label" id="sl3">Select data</div></div></div>
+    <div class="step-line" id="sc3"></div>
+    <div class="step-wrap"><div class="step-node"><div class="step-num pending" id="sn4">4</div><div class="step-label" id="sl4">Review &amp; migrate</div></div></div>
+  </div>
+
+  <!-- PAGE 1: CONNECT -->
+  <div class="page active" id="page1">
+    <div class="card">
+      <div class="card-title">Connect accounts</div>
+      <div class="card-sub">Select region and enter API key for both accounts. The company name is fetched automatically.</div>
+      <div class="account-grid">
+        <div class="account-col">
+          <span class="col-label src">SOURCE</span>
+          <div class="field"><label>Region</label>
+            <select id="src-region">
+              <option value="">&#8212; Select region &#8212;</option>
+              <option value="us-west-1c">US West (us-west-1c)</option>
+              <option value="us-east-1">US East (us-east-1)</option>
+              <option value="eu-central-1">EU Central (eu-central-1)</option>
+              <option value="apac-staging">APAC Staging</option>
+            </select>
+          </div>
+          <div class="field"><label>API key</label><input type="password" id="src-key" placeholder="zpr_live_&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;" autocomplete="off"/></div>
+          <div class="field"><label>Company name</label>
+            <div class="company-identify-box" id="src-company-box"><span class="company-identify-placeholder" id="src-company-display">Will appear after identification</span></div>
+          </div>
+        </div>
+        <div class="account-col">
+          <span class="col-label dst">DESTINATION</span>
+          <div class="field"><label>Region</label>
+            <select id="dst-region">
+              <option value="">&#8212; Select region &#8212;</option>
+              <option value="us-west-1c">US West (us-west-1c)</option>
+              <option value="us-east-1">US East (us-east-1)</option>
+              <option value="eu-central-1">EU Central (eu-central-1)</option>
+              <option value="apac-staging">APAC Staging</option>
+            </select>
+          </div>
+          <div class="field"><label>API key</label><input type="password" id="dst-key" placeholder="zpr_live_&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;" autocomplete="off"/></div>
+          <div class="field"><label>Company name</label>
+            <div class="company-identify-box" id="dst-company-box"><span class="company-identify-placeholder" id="dst-company-display">Will appear after identification</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="info-strip"><div class="info-strip-dot"></div>API keys are held in memory only &mdash; never logged, stored, or sent to third parties.</div>
+      <div class="error-alert" id="connect-error"></div>
+      <div class="bottom-bar">
+        <div class="bottom-bar-note">session expires after 2 hours</div>
+        <button class="btn btn-primary" id="connect-btn" disabled>Continue &#8594;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 2: MODULES -->
+  <div class="page" id="page2">
+    <div class="card">
+      <div class="card-title">Available modules</div>
+      <div class="card-sub" id="mod-sub">Fetching modules from source account&#x2026;</div>
+      <div class="module-grid" id="mod-grid">
+        <div style="grid-column:1/-1;padding:2rem;text-align:center;color:var(--muted2)">
+          <div class="loading-dots"><span></span><span></span><span></span></div>
+        </div>
+      </div>
+      <div class="bottom-bar">
+        <button class="btn" id="back-btn-2">&#8592; Back</button>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:13px;color:var(--muted2)"><strong id="mod-sel-count" style="color:var(--text)">0</strong> modules selected</span>
+          <button class="btn btn-primary" id="mod-next-btn" disabled>Select data &#8594;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 3: SELECT DATA -->
+  <div class="page" id="page3">
+    <div class="card">
+      <div class="card-title">Select data to migrate</div>
+      <div class="card-sub">Choose exactly what to migrate from each module.</div>
+      <div class="main-tab-bar" id="main-tab-bar"></div>
+      <div id="module-views"></div>
+      <div class="bottom-bar">
+        <button class="btn" id="back-btn-3">&#8592; Back</button>
+        <button class="btn btn-primary" id="to-review-btn">Review &amp; migrate &#8594;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 4: REVIEW & MIGRATE -->
+  <div class="page" id="page4">
+    <div class="card">
+      <div class="card-title">Review &amp; migrate</div>
+      <div class="card-sub">Confirm your selections before starting the migration.</div>
+      <div class="acct-review-grid">
+        <div class="acct-review-box">
+          <div class="acct-review-label src">SOURCE</div>
+          <div class="acct-review-name" id="rev-src-name">&#8212;</div>
+          <div class="acct-review-region" id="rev-src-region">&#8212;</div>
+        </div>
+        <div class="acct-review-box">
+          <div class="acct-review-label dst">DESTINATION</div>
+          <div class="acct-review-name" id="rev-dst-name">&#8212;</div>
+          <div class="acct-review-region" id="rev-dst-region">&#8212;</div>
+        </div>
+      </div>
+      <div id="review-body"></div>
+      <div id="migrate-progress" style="display:none">
+        <div class="stats-row">
+          <div class="stat-chip"><div class="stat-chip-num green" id="stat-ok">0</div><div class="stat-chip-label">Migrated</div></div>
+          <div class="stat-chip"><div class="stat-chip-num amber" id="stat-skip">0</div><div class="stat-chip-label">Skipped</div></div>
+          <div class="stat-chip"><div class="stat-chip-num red" id="stat-fail">0</div><div class="stat-chip-label">Failed</div></div>
+        </div>
+        <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-fill"></div></div>
+        <div class="log-wrap" id="log-wrap"></div>
+        <div class="done-banner" id="done-banner" style="display:none">
+          <div class="done-icon">&#10003;</div>
+          <div class="done-text" id="done-text">Migration complete.</div>
+          <span class="download-btn" id="download-btn">&#8595; Download report</span>
+        </div>
+      </div>
+      <div class="error-alert" id="migrate-error"></div>
+      <div class="bottom-bar">
+        <button class="btn" id="back-btn-4">&#8592; Back</button>
+        <button class="btn btn-primary migrate-btn" id="migrate-btn">Start migration &#8594;</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script src="js/app.js"></script>
+</body>
+</html>
