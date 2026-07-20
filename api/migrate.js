@@ -205,7 +205,9 @@ module.exports = async (req, res) => {
         let dstCatUid = null;
         try {
           const catRes = await zuper(session.dstBase, session.dstKey, 'POST', '/jobs/category', {
-            category: { category_name: srcCat.category_name },
+            category_name: srcCat.category_name,
+            estimated_duration: srcCat.estimated_duration || { days: 0, hours: 0, minutes: 0 },
+            auto_create_status: false,
           });
           dstCatUid = catRes?.data?.category_uid
                    || catRes?.data?.job_category_uid
@@ -239,6 +241,7 @@ module.exports = async (req, res) => {
           const uid   = srcStatus.status_uid;
           const name  = srcStatus.status_name;
           const color = srcStatus.status_color || '#888888';
+          const type  = srcStatus.status_type || 'NEW';
 
           if (!selectedStatusIds.has(uid)) continue;
           if (!dstCatUid) {
@@ -248,7 +251,7 @@ module.exports = async (req, res) => {
           }
           try {
             await zuper(session.dstBase, session.dstKey, 'POST', `/jobs/status_new/${dstCatUid}`, {
-              job_status: { status_name: name, status_color: color, status_type: 'NEW' },
+              job_status: { status_name: name, status_color: color, status_type: type },
             });
             migrated++;
             emit({ type: 'record', status: 'ok', name: `Status: ${name} (${srcCat.category_name})`, migrated, skipped, failed });
