@@ -205,9 +205,11 @@ module.exports = async (req, res) => {
         let dstCatUid = null;
         try {
           const catRes = await zuper(session.dstBase, session.dstKey, 'POST', '/jobs/category', {
-            category_name: srcCat.category_name,
-            estimated_duration: srcCat.estimated_duration || { days: 0, hours: 0, minutes: 0 },
-            auto_create_status: false,
+            category: {
+              category_name: srcCat.category_name,
+              estimated_duration: srcCat.estimated_duration || { days: 0, hours: 0, minutes: 0 },
+              auto_create_status: false,
+            },
           });
           dstCatUid = catRes?.data?.category_uid
                    || catRes?.data?.job_category_uid
@@ -231,7 +233,8 @@ module.exports = async (req, res) => {
             } catch(_) {}
           } else {
             failed++;
-            emit({ type: 'record', status: 'error', name: `Category: ${srcCat.category_name}`, reason: e.message, migrated, skipped, failed });
+            const rawDetail = e.raw ? ` [raw: ${JSON.stringify(e.raw).slice(0, 400)}]` : '';
+            emit({ type: 'record', status: 'error', name: `Category: ${srcCat.category_name}`, reason: e.message + rawDetail, migrated, skipped, failed });
           }
         }
         await delay(80);

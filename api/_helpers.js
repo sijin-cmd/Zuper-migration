@@ -36,6 +36,7 @@ async function zuper(baseUrl, apiKey, method, path, data) {
     const msg = err.message || err.error || `HTTP ${res.status}`;
     const e = new Error(msg);
     e.status = res.status;
+    e.raw = err;
     throw e;
   }
   return res.json();
