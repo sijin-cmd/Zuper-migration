@@ -104,7 +104,9 @@ const MODULE_DEFS = [
   {key:'checklists2form',icon:'\uD83D\uDD04',name:'Checklists → Inspection Forms',desc:'Convert checklists to inspection form templates'},
   {key:'checklists',icon:'\u2705',name:'Checklists',desc:'Migrate checklists to destination account'},
   {key:'assets',icon:'\uD83C\uDFD7',name:'Assets',desc:'Asset categories and items'},
+  {key:'parts',icon:'\uD83E\uDDE9',name:'Parts & Services',desc:'Parts, services, products & bundles'},
   {key:'inspectionforms',icon:'\uD83D\uDCCB',name:'Inspection forms',desc:'Asset inspection form templates'},
+  {key:'tasktemplates',icon:'📝',name:'Task templates',desc:'Settings → Jobs → Task Template'},
   {key:'workflows',icon:'⚡',name:'Workflows',desc:'Automation workflows'},
   {key:'emailtemplates',icon:'✉️',name:'Email & SMS templates',desc:'Email and SMS notification templates'},
   {key:'customfields',icon:'🔧',name:'Custom fields',desc:'Custom fields across all modules (including Parts & Services)'},
@@ -137,6 +139,7 @@ async function initModulePage() {
   }).join('');
 
   document.getElementById('mod-sub').textContent=MODULE_DEFS.length+' modules available in '+(state.srcCompany||'source account')+'. Select what you want to migrate.';
+  renderClModePanel();
   updateModCount();
 }
 
@@ -145,13 +148,55 @@ function toggleModule(el,key) {
   el.querySelector('.mod-check').classList.toggle('on',el.classList.contains('selected'));
   if(el.classList.contains('selected')){ if(!state.selectedModules.includes(key)) state.selectedModules.push(key); }
   else state.selectedModules=state.selectedModules.filter(k=>k!==key);
+  if(key==='checklists') renderClModePanel();
   updateModCount();
 }
 
 function updateModCount() {
   const count=state.selectedModules.length;
   document.getElementById('mod-sel-count').textContent=count;
-  document.getElementById('mod-next-btn').disabled=count===0;
+  // Checklists needs a target mode before moving on
+  const needsMode=state.selectedModules.includes('checklists')&&!getClSel().mode;
+  document.getElementById('mod-next-btn').disabled=count===0||needsMode;
+}
+
+// ── CHECKLISTS: target mode (option cards on step 2) ──────────────────────────
+// 'new'      → questions go into a NEW status you name (in a category you pick)
+// 'existing' → questions go into a status that already exists in the destination
+function getClSel() {
+  if(!state.selections.checklists) state.selections.checklists={checklists:[]};
+  const s=state.selections.checklists;
+  if(!s.targets) s.targets={};
+  return s;
+}
+
+const CL_MODES = [
+  {key:'new', icon:'➕', name:'Create a new status',
+   desc:'Selected questions go into a new status you name, inside a destination category you choose (or a new category).'},
+  {key:'existing', icon:'🎯', name:'Into an existing status',
+   desc:'Selected questions are added to a status that already exists in the destination. Works within the same account too.'},
+];
+
+function renderClModePanel() {
+  const panel=document.getElementById('cl-mode-panel'); if(!panel) return;
+  if(!state.selectedModules.includes('checklists')){ panel.style.display='none'; return; }
+  const mode=getClSel().mode;
+  panel.style.display='block';
+  panel.innerHTML=`<div class="cl-mode-title">Checklists — how should the questions be migrated?</div>
+    <div class="cl-mode-sub">Pick one. You’ll choose the exact destination category and status for each group in the next step.</div>
+    <div class="cl-mode-grid">${CL_MODES.map(m=>`
+      <div class="cl-mode-card${mode===m.key?' selected':''}" onclick="setClMode('${m.key}')">
+        <div class="mod-check${mode===m.key?' on':''}" style="margin-top:1px"></div>
+        <div><div class="module-name">${m.icon} ${m.name}</div><div class="module-desc">${m.desc}</div></div>
+      </div>`).join('')}
+    </div>`;
+}
+
+function setClMode(mode) {
+  const s=getClSel();
+  if(s.mode!==mode){ s.mode=mode; s.targets={}; } // target shapes differ per mode
+  renderClModePanel();
+  updateModCount();
 }
 
 // PAGE 3 — SELECT DATA
@@ -193,7 +238,9 @@ function countSelections(key) {
   if(key==='checklists2form') return (s.checklists||[]).length;
   if(key==='checklists') return (s.checklists||[]).length;
   if(key==='assets') return Object.values(s.assets||{}).flat().length;
+  if(key==='parts') return Object.values(s.items||{}).flat().length;
   if(key==='inspectionforms') return (s.forms||[]).length;
+  if(key==='tasktemplates') return (s.templates||[]).length;
   if(key==='workflows') return (s.workflows||[]).length;
   if(key==='emailtemplates') return (s.templates||[]).length;
   if(key==='customfields') return ['job','customer','organization','property','product','asset','estimate','invoice'].reduce((a,sub)=>a+Object.values(s[sub]||{}).flat().length,0);
@@ -205,7 +252,9 @@ async function loadModuleView(key,container) {
   else if(key==='checklists2form') await loadChecklistsModuleView('checklists2form', container);
   else if(key==='checklists') await loadChecklistsModuleView('checklists', container);
   else if(key==='assets') await loadAssetsView(container);
+  else if(key==='parts') await loadPartsView(container);
   else if(key==='inspectionforms') await loadInspectionFormsView(container);
+  else if(key==='tasktemplates') await loadTaskTemplatesView(container);
   else if(key==='workflows') await loadWorkflowsView(container);
   else if(key==='emailtemplates') await loadEmailTemplatesView(container);
   else if(key==='customfields') await loadCustomFieldsView(container);
@@ -539,6 +588,102 @@ function toggleAsset(assetId,catId) {
   updateTabCount('assets');
 }
 
+// PARTS & SERVICES
+async function loadPartsView(container) {
+  if(!state.selections.parts) state.selections.parts={categories:[],items:{}};
+  const data=await apiGet('module=parts&sub=categories');
+  const cats=data.data||[];
+  if(!cats.length){container.innerHTML='<div class="empty-state">No product categories found.</div>';return;}
+  container.innerHTML=cats.map(cat=>`
+    <div class="cat-block" id="pcat-${cat.id}">
+      <div class="cat-header" onclick="toggleCatBody('pbody-${cat.id}')">
+        <div class="big-cb" id="pcb-${cat.id}" onclick="event.stopPropagation();togglePartsCat('${cat.id}')"></div>
+        <span class="cat-name">${esc(cat.name)}</span>
+        <span class="cat-sel-count" id="pcsc-${cat.id}"></span>
+        <span class="cat-meta-txt" id="pmeta-${cat.id}">Loading…</span>
+        <button class="sel-all-btn" id="psa-${cat.id}" style="display:none" onclick="event.stopPropagation();togglePartsCat('${cat.id}')">Select all</button>
+        <span class="chev open">&#9660;</span>
+      </div>
+      <div class="cat-body" id="pbody-${cat.id}">${loadingDots()}</div>
+    </div>`).join('');
+  cats.forEach(cat=>loadPartsList(cat));
+}
+
+async function loadPartsList(cat) {
+  const children=cat.children||[];
+  const ids=[cat.id,...children.map(c=>c.id)];
+  const data=await apiGet('module=parts&sub=items&selected='+ids.join(','));
+  const items=data.data||[];
+  const meta=document.getElementById('pmeta-'+cat.id);
+  if(meta) meta.textContent=items.length+' items'+(children.length?' · '+children.length+' sub-categor'+(children.length===1?'y':'ies'):'');
+  if(!state.selections.parts.items[cat.id]) state.selections.parts.items[cat.id]=[];
+  if(!state.partsItemIds) state.partsItemIds={};
+  state.partsItemIds[cat.id]=items.map(p=>p.id);
+  const body=document.getElementById('pbody-'+cat.id);
+  if(!items.length){body.innerHTML='<div class="empty-state" style="padding:1rem">No items found.</div>';return;}
+  const sa=document.getElementById('psa-'+cat.id); if(sa) sa.style.display='';
+  const picked=state.selections.parts.items[cat.id];
+  const card=p=>`
+      <div class="item-card${picked.includes(p.id)?' on':''}" id="pi-${cat.id}-${p.id}" onclick="togglePartItem('${p.id}','${cat.id}')">
+        <div class="sm-cb${picked.includes(p.id)?' on':''}"></div>
+        <div class="i-info">
+          <div class="i-name">${esc(p.name)}</div>
+          <div class="i-detail">${[p.type,p.sku?'SKU: '+p.sku:'',(p.price!==''&&p.price!=null)?'$'+p.price:''].filter(Boolean).join(' · ')}</div>
+        </div>
+      </div>`;
+  // Items tagged directly on the parent first, then one section per sub-category.
+  const groups=[{id:cat.id,name:'Items',direct:true},...children].map(g=>({...g,items:items.filter(p=>p.catId===g.id)}));
+  body.innerHTML=groups.filter(g=>g.items.length||!g.direct).map(g=>
+    `<div class="sub-lbl">${g.direct?'Items':esc(g.name)} <span style="opacity:.6">(${g.items.length})</span></div>`+
+    (g.items.length?'<div class="item-grid">'+g.items.map(card).join('')+'</div>'
+      :'<div class="empty-state" style="padding:.5rem 1rem">No items in this sub-category.</div>')
+  ).join('');
+  syncPartsCatUI(cat.id);
+}
+
+// Category checkbox / "Select all": selects every item in the category and
+// its sub-categories; clicking again when all are selected clears them.
+function togglePartsCat(catId) {
+  const sel=state.selections.parts;
+  const all=(state.partsItemIds||{})[catId]||[];
+  if(!all.length) return;
+  const selectAll=(sel.items[catId]||[]).length<all.length;
+  sel.items[catId]=selectAll?[...all]:[];
+  all.forEach(id=>{
+    const el=document.getElementById('pi-'+catId+'-'+id); if(!el) return;
+    el.classList.toggle('on',selectAll);
+    el.querySelector('.sm-cb').classList.toggle('on',selectAll);
+  });
+  syncPartsCatUI(catId);
+}
+
+function togglePartItem(itemId,catId) {
+  const sel=state.selections.parts;
+  if(!sel.items[catId]) sel.items[catId]=[];
+  const el=document.getElementById('pi-'+catId+'-'+itemId);
+  const isOn=el.classList.toggle('on');
+  el.querySelector('.sm-cb').classList.toggle('on',isOn);
+  if(isOn){if(!sel.items[catId].includes(itemId)) sel.items[catId].push(itemId);}
+  else sel.items[catId]=sel.items[catId].filter(id=>id!==itemId);
+  syncPartsCatUI(catId);
+}
+
+function syncPartsCatUI(catId) {
+  const sel=state.selections.parts;
+  const total=((state.partsItemIds||{})[catId]||[]).length;
+  const catSel=(sel.items[catId]||[]).length;
+  if(catSel&&!sel.categories.includes(catId)) sel.categories.push(catId);
+  if(!catSel) sel.categories=sel.categories.filter(id=>id!==catId);
+  const cb=document.getElementById('pcb-'+catId);
+  if(cb) cb.className='big-cb'+(total&&catSel===total?' on':catSel?' partial':'');
+  const sa=document.getElementById('psa-'+catId);
+  if(sa) sa.textContent=total&&catSel===total?'Deselect all':'Select all';
+  const csc=document.getElementById('pcsc-'+catId);
+  if(csc){csc.textContent=catSel+' sel';csc.className='cat-sel-count'+(catSel?' vis':'');}
+  const block=document.getElementById('pcat-'+catId); if(block) block.classList.toggle('has-sel',catSel>0);
+  updateTabCount('parts');
+}
+
 // WORKFLOWS
 async function loadWorkflowsView(container) {
   if(!state.selections.workflows) state.selections.workflows={workflows:[]};
@@ -568,10 +713,27 @@ async function loadChecklistsModuleView(moduleKey, container) {
   if(!state.selections[moduleKey]) state.selections[moduleKey]={checklists:[]};
   const modeLabel = moduleKey==='checklists2form' ? 'will become inspection form' : 'will be migrated as checklist';
   container.innerHTML='<div class="loading-state">'+loadingDots()+'<span>Loading job categories…</span></div>';
-  const data=await apiGet('module=jobs&sub=categories');
+  const withTarget = moduleKey==='checklists' && !!getClSel().mode;
+  const [data, dstData] = await Promise.all([
+    apiGet('module=jobs&sub=categories'),
+    withTarget ? apiGet('module=jobs&sub=dstcategories') : Promise.resolve(null),
+  ]);
   const cats=data.data||[];
   if(!cats.length){container.innerHTML='<div class="empty-state">No job categories found.</div>';return;}
-  container.innerHTML=cats.map(cat=>{
+  if(withTarget){
+    if(dstData && dstData.error){container.innerHTML='<div class="empty-state">Could not load destination categories: '+esc(dstData.error)+'</div>';return;}
+    state.dstCats=(dstData&&dstData.data)||[];
+    state.srcStatusInfo={};
+    cats.forEach(c=>(c.statuses||[]).forEach(s=>{
+      state.srcStatusInfo[s.id]={catId:c.id,catName:c.name,name:s.name,color:s.color,type:s.type};
+    }));
+  }
+  const modeNote = withTarget
+    ? `<div class="info-strip"><div class="info-strip-dot"></div>${getClSel().mode==='new'
+        ? 'Mode: <strong style="color:var(--text);margin:0 3px">Create a new status</strong> — pick questions, then set the destination category and new status name for each group.'
+        : 'Mode: <strong style="color:var(--text);margin:0 3px">Into an existing status</strong> — pick questions, then choose the destination category and status for each group.'}</div>`
+    : '';
+  container.innerHTML=modeNote+cats.map(cat=>{
     const statuses=cat.statuses||[];
     const catNameSafe=encodeURIComponent(cat.name);
     const statusRows=statuses.map(s=>{
@@ -592,6 +754,7 @@ async function loadChecklistsModuleView(moduleKey, container) {
             data-statusname="${statusNameSafe}">
             <span style="font-size:12px;color:var(--muted)">Loading…</span>
           </div>
+          ${withTarget?`<div class="cl-target" id="cltgt-${s.id}" style="display:none"></div>`:''}
         </div>
       </div>`;
     }).join('');
@@ -647,9 +810,138 @@ async function loadChecklistChips(moduleKey, catId, catName, statusId, statusNam
         ${typeLabel?`<span style="font-size:10px;padding:1px 6px;border-radius:20px;background:var(--surface2);color:var(--muted2);margin-left:4px">${typeLabel}</span>`:''}
       </div>`;
     }).join('');
+    // Re-entering this step: re-mark questions that are still selected
+    const sel=state.selections[moduleKey];
+    (sel&&sel.checklists||[]).filter(c=>c.statusId===statusId).forEach(c=>{
+      const el=document.getElementById(moduleKey+'-clc-'+c.id);
+      if(el){el.classList.add('on');const ck=el.querySelector('.ck');if(ck)ck.classList.add('on');}
+    });
+    if(moduleKey==='checklists') renderClTarget(statusId);
   } catch(e) {
     chipsEl.innerHTML='<span class="no-cl">Could not load</span>';
   }
+}
+
+// ── CHECKLISTS: per-status target picker ──────────────────────────────────────
+function clNorm(s){ return String(s||'').toLowerCase().trim(); }
+function clSameAccount(){
+  return !!state.srcCompany && state.srcCompany===state.dstCompany && state.srcRegion===state.dstRegion;
+}
+
+// Pre-fill a target by name match the first time a group gets a selection
+function clDefaultTarget(srcStatusId) {
+  const mode=getClSel().mode;
+  const src=state.srcStatusInfo&&state.srcStatusInfo[srcStatusId]; if(!src) return null;
+  const cat=(state.dstCats||[]).find(c=>clNorm(c.name)===clNorm(src.catName));
+  if(mode==='existing'){
+    const st=cat&&(cat.statuses||[]).find(s=>clNorm(s.name)===clNorm(src.name));
+    // Same account: matching by name would point back at the source status itself
+    const useSt = st && !(clSameAccount() && st.id===srcStatusId) ? st : null;
+    return {catId:cat?cat.id:'',catName:cat?cat.name:'',statusId:useSt?useSt.id:'',statusName:useSt?useSt.name:''};
+  }
+  return {catId:cat?cat.id:'',catName:cat?cat.name:src.catName,statusName:src.name,statusColor:src.color,statusType:src.type};
+}
+
+function renderClTarget(srcStatusId) {
+  const box=document.getElementById('cltgt-'+srcStatusId); if(!box) return;
+  const s=getClSel();
+  const count=(s.checklists||[]).filter(c=>c.statusId===srcStatusId).length;
+  if(!count||!s.mode){ box.style.display='none'; return; }
+  if(!s.targets[srcStatusId]) s.targets[srcStatusId]=clDefaultTarget(srcStatusId)||{};
+  const t=s.targets[srcStatusId];
+  const src=(state.srcStatusInfo||{})[srcStatusId]||{};
+  const cats=state.dstCats||[];
+  const dstName=esc(state.dstCompany||'destination');
+  let html=`<div class="cl-target-lbl">→ MIGRATE ${count} QUESTION${count>1?'S':''} TO (${dstName})</div><div class="cl-target-row">`;
+  let note='';
+
+  if(s.mode==='existing'){
+    html+=`<select onchange="clTgtSetCat('${srcStatusId}',this.value)">
+      <option value="">— Destination category —</option>
+      ${cats.map(c=>`<option value="${esc(c.id)}"${c.id===t.catId?' selected':''}>${esc(c.name)}</option>`).join('')}
+    </select>`;
+    const cat=cats.find(c=>c.id===t.catId);
+    html+=`<select onchange="clTgtSetStatus('${srcStatusId}',this.value)"${cat?'':' disabled'}>
+      <option value="">— Destination status —</option>
+      ${(cat?cat.statuses||[]:[]).map(st=>`<option value="${esc(st.id)}"${st.id===t.statusId?' selected':''}>${esc(st.name)}</option>`).join('')}
+    </select>`;
+    if(t.statusId&&clSameAccount()&&t.statusId===srcStatusId)
+      note='<div class="cl-target-note warn">⚠ This is the same status the questions come from — they will be duplicated inside it.</div>';
+    else if(t.statusId)
+      note='<div class="cl-target-note">Questions are added after the ones already in this status. Existing questions are not changed.</div>';
+  } else {
+    html+=`<select onchange="clTgtSetCat('${srcStatusId}',this.value)">
+      <option value="__create__"${!t.catId?' selected':''}>➕ New category: “${esc(t.catName||src.catName||'')}”</option>
+      ${cats.map(c=>`<option value="${esc(c.id)}"${c.id===t.catId?' selected':''}>${esc(c.name)}</option>`).join('')}
+    </select>
+    <input type="text" placeholder="New status name" value="${esc(t.statusName||'')}" oninput="clTgtSetName('${srcStatusId}',this.value)">`;
+    note=clNewStatusNote(t);
+  }
+  html+='</div><div id="cltgt-note-'+srcStatusId+'">'+note+'</div>';
+  box.innerHTML=html;
+  box.style.display='block';
+}
+
+function clTgtSetCat(srcStatusId,val) {
+  const s=getClSel(); const t=s.targets[srcStatusId]||(s.targets[srcStatusId]={});
+  const src=(state.srcStatusInfo||{})[srcStatusId]||{};
+  if(s.mode==='existing'){
+    const cat=(state.dstCats||[]).find(c=>c.id===val);
+    t.catId=cat?cat.id:''; t.catName=cat?cat.name:''; t.statusId=''; t.statusName='';
+  } else if(val==='__create__'){
+    t.catId=''; t.catName=src.catName||'';
+  } else {
+    const cat=(state.dstCats||[]).find(c=>c.id===val);
+    t.catId=cat?cat.id:''; t.catName=cat?cat.name:'';
+  }
+  renderClTarget(srcStatusId);
+}
+
+function clTgtSetStatus(srcStatusId,val) {
+  const t=getClSel().targets[srcStatusId]; if(!t) return;
+  const cat=(state.dstCats||[]).find(c=>c.id===t.catId);
+  const st=cat&&(cat.statuses||[]).find(x=>x.id===val);
+  t.statusId=st?st.id:''; t.statusName=st?st.name:'';
+  renderClTarget(srcStatusId);
+}
+
+function clNewStatusNote(t) {
+  const cats=state.dstCats||[];
+  const cat=cats.find(c=>c.id===t.catId);
+  if(!clNorm(t.statusName)) return '<div class="cl-target-note err">Enter a name for the new status.</div>';
+  if(cat&&(cat.statuses||[]).some(st=>clNorm(st.name)===clNorm(t.statusName)))
+    return `<div class="cl-target-note err">“${esc(t.statusName)}” already exists in ${esc(cat.name)}. Choose another name, or go back and pick “Into an existing status”.</div>`;
+  if(!t.catId && cats.some(c=>clNorm(c.name)===clNorm(t.catName)))
+    return `<div class="cl-target-note warn">A category named “${esc(t.catName)}” already exists — it will be reused.</div>`;
+  return '<div class="cl-target-note">Status colour and type are copied from the source status.</div>';
+}
+
+function clTgtSetName(srcStatusId,val) {
+  const t=getClSel().targets[srcStatusId]; if(!t) return;
+  t.statusName=val;
+  // Update only the note, so the text box keeps focus while typing
+  const holder=document.getElementById('cltgt-note-'+srcStatusId);
+  if(holder) holder.innerHTML=clNewStatusNote(t);
+}
+
+// Returns an error message, or '' if every selected group has a valid target
+function validateClTargets() {
+  if(!state.selectedModules.includes('checklists')) return '';
+  const s=getClSel(); if(!s.mode) return 'Choose how checklists should be migrated (go back to Modules).';
+  const groups=[...new Set((s.checklists||[]).map(c=>c.statusId))];
+  for(const gid of groups){
+    const t=s.targets[gid]||{}; const src=(state.srcStatusInfo||{})[gid]||{};
+    const label=(src.catName||'')+' — '+(src.name||'');
+    if(s.mode==='existing'){
+      if(!t.catId||!t.statusId) return 'Checklists: choose a destination category and status for "'+label+'".';
+    } else {
+      if(!clNorm(t.statusName)) return 'Checklists: enter a new status name for "'+label+'".';
+      const cat=(state.dstCats||[]).find(c=>c.id===t.catId);
+      if(cat&&(cat.statuses||[]).some(st=>clNorm(st.name)===clNorm(t.statusName)))
+        return 'Checklists: status "'+t.statusName+'" already exists in '+cat.name+'.';
+    }
+  }
+  return '';
 }
 
 function toggleChecklistModule(moduleKey, clId, catId, statusId) {
@@ -667,9 +959,7 @@ function toggleChecklistModule(moduleKey, clId, catId, statusId) {
   } else {
     sel.checklists = sel.checklists.filter(c=>c.id!==clId);
   }
-  // Update count badge
-  const grpCount = sel.checklists.filter(c=>c.statusId===statusId).length;
-  const csc = document.getElementById(moduleKey+'-csc-'+document.getElementById(moduleKey+'-clc-'+clId)?.dataset?.catid);
+  if(moduleKey==='checklists') renderClTarget(statusId);
   updateTabCount(moduleKey);
 }
 
@@ -687,6 +977,7 @@ function clModuleSelectAll(moduleKey, statusId) {
       }
     }
   });
+  if(moduleKey==='checklists') renderClTarget(statusId);
   updateTabCount(moduleKey);
 }
 
@@ -698,6 +989,7 @@ function clModuleClearAll(moduleKey, statusId) {
     ids.add(el.id.replace(moduleKey+'-clc-',''));
   });
   state.selections[moduleKey].checklists = state.selections[moduleKey].checklists.filter(c=>!ids.has(c.id));
+  if(moduleKey==='checklists') renderClTarget(statusId);
   updateTabCount(moduleKey);
 }
 async function loadInspectionFormsView(container) {
@@ -742,6 +1034,56 @@ function selectAllForms(on) {
   });
   if(!on) sel.forms=[];
   updateTabCount('inspectionforms');
+}
+
+// TASK TEMPLATES
+async function loadTaskTemplatesView(container) {
+  if(!state.selections.tasktemplates) state.selections.tasktemplates={templates:[]};
+  container.innerHTML='<div class="loading-state">'+loadingDots()+'<span>Loading task templates…</span></div>';
+  const data=await apiGet('module=tasktemplates&sub=list');
+  const tpls=data.data||[];
+  if(!tpls.length){container.innerHTML='<div class="empty-state">No task templates found.</div>';return;}
+  const withForm=tpls.filter(t=>t.form).length;
+  container.innerHTML=`
+    <div class="sel-all-bar">
+      <span>${tpls.length} task template${tpls.length!==1?'s':''} found${withForm?' · '+withForm+' use an inspection form (migrate it too, or it will be left blank)':''}</span>
+      <button class="sel-all-btn" onclick="selectAllTaskTemplates(true)">Select all</button>
+      <button class="sel-all-btn" onclick="selectAllTaskTemplates(false)">Deselect all</button>
+    </div>
+    <div class="wf-list">
+      ${tpls.map(t=>{
+        const isOn=state.selections.tasktemplates.templates.includes(t.id);
+        const meta=[t.active?'Active':'Inactive',t.type==='CHECKLIST'?'Checklist':'',t.priority&&t.priority!=='NONE'?t.priority.toLowerCase()+' priority':'',
+          t.form?'form: '+t.form:'',t.assignees?t.assignees+' assignee'+(t.assignees!==1?'s':''):''].filter(Boolean).join(' · ');
+        return `<div class="wf-item${isOn?' on':''}" id="ttpl-${t.id}" onclick="toggleTaskTemplate('${t.id}')">
+          <div class="sm-cb${isOn?' on':''}"></div>
+          <span class="wf-name">${esc(t.name)}</span>
+          <span class="wf-meta">${esc(meta)}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function toggleTaskTemplate(tplId) {
+  const sel=state.selections.tasktemplates;
+  const el=document.getElementById('ttpl-'+tplId);
+  const isOn=el.classList.toggle('on');
+  el.querySelector('.sm-cb').classList.toggle('on',isOn);
+  if(isOn){if(!sel.templates.includes(tplId)) sel.templates.push(tplId);}
+  else sel.templates=sel.templates.filter(id=>id!==tplId);
+  updateTabCount('tasktemplates');
+}
+
+function selectAllTaskTemplates(on) {
+  const sel=state.selections.tasktemplates;
+  document.querySelectorAll('[id^="ttpl-"]').forEach(el=>{
+    const id=el.id.replace('ttpl-','');
+    el.classList.toggle('on',on);
+    const cb=el.querySelector('.sm-cb'); if(cb) cb.classList.toggle('on',on);
+    if(on){if(!sel.templates.includes(id)) sel.templates.push(id);}
+  });
+  if(!on) sel.templates=[];
+  updateTabCount('tasktemplates');
 }
 
 // EMAIL & SMS TEMPLATES
@@ -932,12 +1274,29 @@ function initReviewPage() {
     } else if(key==='checklists2form'){
       if((s.checklists||[]).length) html+=rRow('Checklists → Inspection forms',s.checklists.length+' checklist'+(s.checklists.length!==1?'s':''));
     } else if(key==='checklists'){
-      if((s.checklists||[]).length) html+=rRow('Checklists',s.checklists.length+' checklist'+(s.checklists.length!==1?'s':''));
+      if((s.checklists||[]).length){
+        html+=rRow('Mode', s.mode==='existing'?'Into an existing status':s.mode==='new'?'Create a new status':'Match by name');
+        const groups=[...new Set(s.checklists.map(c=>c.statusId))];
+        groups.forEach(gid=>{
+          const n=s.checklists.filter(c=>c.statusId===gid).length;
+          const first=s.checklists.find(c=>c.statusId===gid);
+          const t=(s.targets||{})[gid]||{};
+          const to = s.mode==='existing' ? (t.catName+' — '+t.statusName)
+                   : s.mode==='new' ? ((t.catId?t.catName:'new category "'+t.catName+'"')+' — new status "'+t.statusName+'"')
+                   : (first.catName+' — '+first.statusName);
+          html+=rRow(first.catName+' — '+first.statusName, n+' question'+(n!==1?'s':'')+' → '+to);
+        });
+      }
     } else if(key==='assets'){
       const all=Object.values(s.assets||{}).flat();
       if(all.length) html+=rRow('Assets',all.length+' assets');
+    } else if(key==='parts'){
+      const all=Object.values(s.items||{}).flat();
+      if(all.length) html+=rRow('Parts & Services',all.length+' item'+(all.length!==1?'s':''));
     } else if(key==='inspectionforms'){
       if((s.forms||[]).length) html+=rRow('Inspection forms',s.forms.length+' form'+(s.forms.length!==1?'s':''));
+    } else if(key==='tasktemplates'){
+      if((s.templates||[]).length) html+=rRow('Task templates',s.templates.length+' template'+(s.templates.length!==1?'s':''));
     } else if(key==='workflows'){
       if((s.workflows||[]).length) html+=rRow('Workflows',s.workflows.length+' workflows');
     } else if(key==='customfields'){
@@ -995,7 +1354,7 @@ async function startMigration() {
         const ev=JSON.parse(line);
         if(ev.type==='start'||ev.type==='progress') addLog(ev.message,'log-info');
         else if(ev.type==='record'){
-          if(ev.status==='ok'){ok++;addLog('\u2713 '+ev.name,'log-ok');}
+          if(ev.status==='ok'){ok++;addLog('\u2713 '+ev.name+(ev.reason?' \u2014 '+ev.reason:''),'log-ok');}
           else if(ev.status==='skip'){skip++;addLog('\u21B7 '+ev.name+(ev.reason?' \u2014 '+ev.reason:''),'log-skip');}
           else{fail++;addLog('\u2717 '+ev.name+(ev.reason?' \u2014 '+ev.reason:''),'log-err');}
           updateStats(ok,skip,fail);
@@ -1013,7 +1372,7 @@ async function startMigration() {
 function downloadReport() {
   const rows=[['Status','Record','Detail']];
   migrationLog.forEach(({msg,cls})=>{
-    if(cls==='log-ok') rows.push(['Migrated',msg.replace('\u2713 ',''),'']);
+    if(cls==='log-ok'){const p=msg.replace('\u2713 ','').split(' \u2014 ');rows.push(['Migrated',p[0],p[1]||'']);}
     else if(cls==='log-skip'){const p=msg.replace('\u21B7 ','').split(' \u2014 ');rows.push(['Skipped',p[0],p[1]||'']);}
     else if(cls==='log-err'){const p=msg.replace('\u2717 ','').split(' \u2014 ');rows.push(['Failed',p[0],p[1]||'']);}
   });
@@ -1036,7 +1395,12 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('back-btn-3').addEventListener('click',()=>goTo(2));
   document.getElementById('back-btn-4').addEventListener('click',()=>goTo(3));
   document.getElementById('mod-next-btn').addEventListener('click',()=>goTo(3));
-  document.getElementById('to-review-btn').addEventListener('click',()=>goTo(4));
+  document.getElementById('to-review-btn').addEventListener('click',()=>{
+    hideError('select-error');
+    const err=validateClTargets();
+    if(err){ showError('select-error',err); return; }
+    goTo(4);
+  });
   document.getElementById('migrate-btn').addEventListener('click',startMigration);
   document.getElementById('download-btn').addEventListener('click',downloadReport);
 });
