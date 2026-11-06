@@ -85,6 +85,25 @@ body::before{content:'';position:fixed;inset:0;z-index:0;background-image:linear
 .module-card{border:1px solid var(--border);border-radius:var(--radius);padding:16px 14px;cursor:pointer;background:var(--surface2);transition:all 0.2s}
 .module-card:hover{border-color:var(--border-hi)}
 .module-card.selected{border-color:var(--green);background:var(--green-dim)}
+/* Checklists — target mode option cards (step 2) */
+.cl-mode-panel{border:1px solid var(--border-hi);border-radius:var(--radius);padding:14px;margin-bottom:1.25rem;background:rgba(0,200,150,0.04);animation:fadeSlide 0.2s ease}
+.cl-mode-title{font-size:13px;font-weight:500;margin-bottom:3px}
+.cl-mode-sub{font-size:12px;color:var(--muted2);margin-bottom:10px}
+.cl-mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cl-mode-card{border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;background:var(--surface2);transition:all 0.2s;display:flex;gap:10px;align-items:flex-start}
+.cl-mode-card:hover{border-color:var(--border-hi)}
+.cl-mode-card.selected{border-color:var(--green);background:var(--green-dim)}
+.cl-mode-card .module-desc{margin-top:2px;line-height:1.45}
+@media (max-width:640px){.cl-mode-grid{grid-template-columns:1fr}}
+/* Checklists — per-status target picker (step 3) */
+.cl-target{margin-top:10px;padding:10px 12px;border:1px dashed var(--border-hi);border-radius:var(--radius);background:var(--surface)}
+.cl-target-lbl{font-size:11px;color:var(--blue);font-family:var(--mono);letter-spacing:0.06em;margin-bottom:8px}
+.cl-target-row{display:flex;gap:8px;flex-wrap:wrap}
+.cl-target-row select,.cl-target-row input{flex:1 1 200px;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--sans);font-size:12px;padding:7px 10px;outline:none}
+.cl-target-row select:focus,.cl-target-row input:focus{border-color:var(--green)}
+.cl-target-note{font-size:11px;margin-top:6px;color:var(--muted2)}
+.cl-target-note.warn{color:var(--amber)}
+.cl-target-note.err{color:var(--red)}
 .mod-check{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--muted);background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s}
 .mod-check.on{background:var(--green);border-color:var(--green)}
 .mod-check.on::after{content:'';display:block;width:8px;height:6px;border-left:2px solid #000;border-bottom:2px solid #000;transform:rotate(-45deg) translate(1px,-1px)}
