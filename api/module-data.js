@@ -59,8 +59,14 @@ module.exports = async (req, res) => {
     // Confirmed field names: category_uid, category_name, job_statuses[]
     // Status fields: status_uid, status_name, status_color
     // NOTE: checklists are NOT in this response — loaded separately per status
-    if (module === 'jobs' && sub === 'categories') {
-      const r = await zuperFetch(session.srcBase, session.srcKey, '/jobs/category?populate_statuses=true');
+    // sub=dstcategories returns the same shape from the DESTINATION account —
+    // used by the Checklists module's "target status" picker.
+    if (module === 'jobs' && (sub === 'categories' || sub === 'dstcategories')) {
+      const useDst = sub === 'dstcategories';
+      const r = await zuperFetch(
+        useDst ? session.dstBase : session.srcBase,
+        useDst ? session.dstKey  : session.srcKey,
+        '/jobs/category?populate_statuses=true');
       const list = extractList(r);
       return respond(res, 200, {
         data: list.map(c => ({
@@ -70,6 +76,7 @@ module.exports = async (req, res) => {
             id:    s.status_uid,
             name:  s.status_name,
             color: s.status_color || '#888888',
+            type:  s.status_type || '',
           })).filter(s => s.id && s.name),
         })).filter(c => c.id && c.name)
       });
@@ -124,10 +131,17 @@ module.exports = async (req, res) => {
     if (module === 'parts' && sub === 'categories') {
       const r = await zuperFetch(session.srcBase, session.srcKey, '/products/category');
       const list = extractList(r);
+      // Sub-categories come nested as child_categories[].category (confirmed
+      // 2026-10-15); products are tagged with the sub-category's uid.
       return respond(res, 200, {
-        data: list.map(c => ({
+        data: list.filter(c => !c.is_deleted).map(c => ({
           id:   c.product_category_uid || c.category_uid || c._id,
           name: c.product_category_name || c.category_name || c.name,
+          children: (c.child_categories || [])
+            .map(cc => cc.category || cc)
+            .filter(cc => cc && !cc.is_deleted)
+            .map(cc => ({ id: cc.category_uid, name: cc.category_name }))
+            .filter(cc => cc.id && cc.name),
         })).filter(c => c.id && c.name)
       });
     }
@@ -135,20 +149,44 @@ module.exports = async (req, res) => {
     // ── PARTS & SERVICES: ITEMS ───────────────────────────────────────────────
     // Confirmed fields: product_uid, product_name, product_type, price,
     // product_category.category_uid, product_category.category_name
-    // Confirmed filter: /product?category_uid=X
+    // NOTE: /product?category_uid=X is NOT honored by the API — filtered below.
+    // Paginated (count/page/total_pages) same as the other "list everything"
+    // endpoints in this file — some categories run into the hundreds of items.
+    // `selected` = parent category uid followed by its sub-category uids.
     if (module === 'parts' && sub === 'items') {
-      const catId = sel[0];
-      const path = catId ? `/product?category_uid=${catId}` : '/product';
-      const r = await zuperFetch(session.srcBase, session.srcKey, path);
-      const list = extractList(r);
+      const basePath = '/product';
+      const allItems = [];
+      let page = 1;
+      while (true) {
+        const sep = basePath.includes('?') ? '&' : '?';
+        const r    = await zuperFetch(session.srcBase, session.srcKey, `${basePath}${sep}count=200&page=${page}`);
+        const list = extractList(r);
+        if (!list.length) break;
+        allItems.push(...list);
+        const totalPages = r?.total_pages;
+        if (totalPages != null) { if (page >= totalPages) break; }
+        else if (list.length < 200) break;
+        page++;
+        if (page > 500) break; // safety cap
+      }
+      // Zuper ignores the category_uid query param and returns every product
+      // for every category, so filter by the product's own category here.
+      const prodCatUid = p => {
+        const c = p.product_category;
+        if (!c) return '';
+        if (typeof c === 'object') return c.category_uid || c.product_category_uid || c._id || '';
+        return String(c);
+      };
+      const items = sel.length ? allItems.filter(p => sel.includes(prodCatUid(p))) : allItems;
       return respond(res, 200, {
-        data: list.map(p => ({
+        data: items.map(p => ({
           id:       p.product_uid,
           name:     p.product_name,
           sku:      p.product_id || p.sku || '',
           price:    p.price ?? p.unit_price ?? '',
           type:     (p.product_type || 'PART').toUpperCase(),
           category: p.product_category?.category_name || '',
+          catId:    prodCatUid(p),
         })).filter(p => p.id && p.name)
       });
     }
@@ -209,6 +247,29 @@ module.exports = async (req, res) => {
           id:   w.workflow_uid,
           name: w.workflow_name,
         })).filter(w => w.id && w.name)
+      });
+    }
+
+    // ── TASK TEMPLATES ────────────────────────────────────────────────────────
+    // GET /service_tasks/master paginates with page + count and returns total_pages.
+    if (module === 'tasktemplates' && sub === 'list') {
+      const all = [];
+      for (let page = 1; page <= 100; page++) {
+        const r = await zuperFetch(session.srcBase, session.srcKey, `/service_tasks/master?count=100&page=${page}&filter.keyword=`);
+        const list = extractList(r);
+        all.push(...list);
+        if (r?.total_pages != null ? page >= r.total_pages : list.length < 100) break;
+      }
+      return respond(res, 200, {
+        data: all.filter(t => !t.is_deleted).map(t => ({
+          id:        t.service_task_master_uid,
+          name:      t.service_task_title,
+          type:      t.task_type || '',
+          priority:  t.priority || '',
+          active:    t.is_active !== false,
+          form:      t.inspection_form?.asset_form_name || '',
+          assignees: (t.assigned_to || []).length,
+        })).filter(t => t.id && t.name)
       });
     }
 
