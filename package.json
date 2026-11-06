@@ -4,5 +4,8 @@
   "description": "Zuper MigrateX — Netlify deployment",
   "engines": {
     "node": ">=18"
+  },
+  "scripts": {
+    "dev": "node local-server.js"
   }
 }
